@@ -76,12 +76,6 @@ def kmeans(sites, k, max_iter):
             val, idx = min((val, idx) for (idx, val) in enumerate(dist))
             clusters[idx].add(site)
 
-        print(len(clusters[0]))
-        print(len(clusters[1]))
-        print(len(clusters[2]))
-        print(len(clusters[3]))
-        print(len(clusters[4]))
-
         # calculate centroid of each cluster
         centroids = []
         for cluster in clusters:
@@ -120,8 +114,38 @@ def cluster_hierarchically(active_sites):
     Output: a list of clusterings
             (each clustering is a list of lists of Sequence objects)
     """
-
+    master_clust = []
     # Fill in your code here!
-    
+    clusters = []
+    for site in active_sites:
+        tmp = set()
+        tmp.add(site)
+        clusters.append(tmp)
+
+    master_clust.append(clusters)
+    centroids = []
+    for cluster in clusters:
+        centroids.append(kmeans_centroid(cluster))
+
+
+    while len(clusters) >= 1:
+        distance = np.zeros((len(clusters), len(clusters)), dtype=float)
+        distance[:] = np.inf
+        for i in range(len(clusters) - 1):
+            for j in range(i + 1, len(clusters)):
+                distance[i][j] = compute_similarity(centroids[i], centroids[j])
+
+        min_ind = np.unravel_index(np.argmin(distance), (len(clusters), len(clusters)))
+
+        cluster1 = clusters[min_ind[0]]
+        cluster2 = clusters[min_ind[1]]
+
+        for item in cluster2:
+            cluster1.add(item)
+
+        clusters[min_ind[0]] = cluster1
+        clusters.remove(cluster2)
+
+        master_clust.append(clusters)
 
     return []

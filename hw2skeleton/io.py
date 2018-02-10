@@ -1,7 +1,19 @@
 import glob
 import os
 from .utils import Atom, Residue, ActiveSite
+import hashlib
 
+
+def remove_duplicates(dir):
+    unique = []
+    print(dir)
+    for filename in os.listdir(dir):
+
+        filehash = hashlib.md5(open(os.path.join(dir, filename), 'rb').read()).hexdigest()
+        if filehash not in unique: 
+            unique.append(filehash)
+        else: 
+            os.remove(filename)
 
 def read_active_sites(dir):
     """
@@ -10,6 +22,7 @@ def read_active_sites(dir):
     Input: directory
     Output: list of ActiveSite instances
     """
+
     files = glob.glob(dir + '/*.pdb')
 
     active_sites = []
@@ -107,3 +120,4 @@ def write_mult_clusterings(filename, clusterings):
                 out.write("%s\n" % clusters[j][k])
 
     out.close()
+print(read_active_sites("/Users/student/GitHub/hw2-skeleton/data"))

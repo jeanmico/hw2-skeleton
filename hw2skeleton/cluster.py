@@ -37,7 +37,6 @@ def compute_similarity(site_a, site_b):
     Input: two ActiveSite instances
     Output: the similarity between them (a floating point number)
     """
-    #DEAL WITH DUPLICATES UGH
 
     # Euclidean distance
     

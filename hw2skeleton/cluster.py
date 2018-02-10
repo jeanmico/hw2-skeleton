@@ -1,6 +1,7 @@
 from .utils import Atom, Residue, ActiveSite
 import numpy as np
 import math
+from math import factorial as fac
 
 aa_hydro = {"ALA": 1.8, "ARG": -4.5, 'ASN': -3.5, 'ASP': -3.5, 'CYS': 2.5, 'GLU': -3.5, 'GLN': -3.5, 'GLY': -.4, 'HIS': -3.2, 'ILE': 4.5, 'LEU': 3.8, 'LYS': -3.9, 'MET': 1.9, 'PHE': 2.8, 'PRO': -1.6, 'SER': -.8, 'THR': -.7, 'TRP': -.9, 'TYR': -1.3, 'VAL': 4.2}
 aa_mw = {"ALA": 89.094, "ARG": 174.203, 'ASN': 132.119, 'ASP': 133.104, 'CYS': 121.54, 'GLU': 147.131, 'GLN': 146.146, 'GLY': 75.067, 'HIS': 155.156, 'ILE': 131.175, 'LEU': 131.175, 'LYS': 146.189, 'MET': 149.208, 'PHE': 165.192, 'PRO': 115.132, 'SER': 105.093, 'THR': 119.119, 'TRP': 204.228, 'TYR': 181.191, 'VAL': 117.148}
@@ -39,6 +40,7 @@ def compute_similarity(site_a, site_b):
     #DEAL WITH DUPLICATES UGH
 
     # Euclidean distance
+    
     return math.sqrt(sum([(x - y)**2 for x, y in zip(site_a, site_b)]))
 
 def avg_to_cent(cluster, centroid):
@@ -72,9 +74,6 @@ def dbi(clusters):
                     return 0
 
                 tmp.append(numerator/denom)
-            if a_l == b_l and a != b:
-                print(a)
-                print(b)
         db_index += max(tmp)
     return db_index / n
 
@@ -100,7 +99,7 @@ def kmeans_stop(max_iter, iterations, prev_centroid, centroid):
 
 def kmeans(sites, k, max_iter):
 
-    #randomly pick 5 points to serve as the first clusters
+    #randomly pick k points to serve as the first clusters
     clusters = [set() for x in range(k)]
     assignment = np.random.randint(len(sites), size=k)
     prev_centroid = []
@@ -116,7 +115,7 @@ def kmeans(sites, k, max_iter):
         iterations += 1
 
         prev_centroid = centroids
-
+        clusters = [set() for x in range(k)]
         for site in sites:
             # assign each site to a cluster
             dist = []
@@ -128,13 +127,16 @@ def kmeans(sites, k, max_iter):
         # calculate centroid of each cluster
         centroids = []
         for cluster in clusters:
-            a = kmeans_centroid(cluster)
-            centroids.append(kmeans_centroid(cluster))
+            if cluster != set():
+                centroids.append(kmeans_centroid(cluster))
+            else:
+                random = np.random.randint(len(sites))
+                centroids.append(location(sites[random]))
     print(dbi(clusters))
 
+    print(clusters)
+
     return clusters
-
-
 
 
 
@@ -147,13 +149,10 @@ def cluster_by_partitioning(active_sites):
             (this is really a list of clusters, each of which is list of
             ActiveSite instances)
     """
-    # Fill in your code here!
-    similarity = np.zeros((len(active_sites), len(active_sites)), dtype=float)
-    for i in range(len(active_sites)-1):
-        for j in range(i+1, len(active_sites)):
-            similarity[i][j] = compute_similarity(location(active_sites[i]), location(active_sites[j]))
-
-    clusters = kmeans(active_sites, 3, 10)
+    k = 5
+    if k > len(active_sites):
+        raise ValueError('k = %s is greater than number of sites = %s' % (str(k), str(len(active_sites))))
+    clusters = kmeans(active_sites, k, 10)
 
     return [[x for x in cluster] for cluster in clusters]
 
@@ -167,10 +166,9 @@ def cluster_hierarchically(active_sites):
             (each clustering is a list of lists of Sequence objects)
     """
 
-    dbis = []
-    master_clust = [[] for x in range(len(active_sites))]
-    # Fill in your code here!
-    clusters = []
+    dbis = []  # track DBI of each clustering to pick optimal
+    master_clust = [[] for x in range(len(active_sites))]  # track cluster history
+    clusters = []  # holds the current clustering scheme
     for site in active_sites:
         tmp = set()
         tmp.add(site)
@@ -190,40 +188,86 @@ def cluster_hierarchically(active_sites):
     track = 0
     while len(clusters) >= 2:
         track += 1
+        # build diagonal matrix to track distances
+        # values that are zero or below the diagonal are set to inf
+        #  so there is no special logic needed to find the minimum
         distance = np.zeros((len(clusters), len(clusters)), dtype=float)
-        distance[:] = np.inf
+        distance[:] = np.inf  # set 
         for i in range(len(clusters) - 1):
             for j in range(i + 1, len(clusters)):
                 distance[i][j] = compute_similarity(centroids[i], centroids[j])
 
+        # find the minimum distance; these two clusters will be merged
         min_ind = np.unravel_index(np.argmin(distance), (len(clusters), len(clusters)))
 
         cluster1 = clusters[min_ind[0]]
         cluster2 = clusters[min_ind[1]]
+        add_clust = set()
 
+        # create a set of the new sites
         for item in cluster2:
-            cluster1.add(item)
+            add_clust.add(item)
+        for item in cluster1:
+            add_clust.add(item)
 
-        clusters[min_ind[0]] = cluster1
+        # add the new site, remove the old
+        clusters.append(add_clust)
+        clusters.remove(cluster1)
         clusters.remove(cluster2)
 
+        # calculate the DBI to determine the optimal clustering to use
         if len(clusters) > 1:
             dbis.append(dbi(clusters))
 
-        master_clust[track] = clusters[:]
+        master_clust[track] = clusters[:]  # create a copy of the current clusters
 
     min_dbi  = min(enumerate(dbis), key=lambda x: x[1] if x[1] > 0 else float('inf'))
-    print(min_dbi[0])
-    print(len(dbis))
-    print(len(master_clust[min_dbi[0]]))
-    print(master_clust[min_dbi[0]])
-    print(len(master_clust))
-    print(dbis)
-    print('fuck')
-    for c in master_clust[min_dbi[0]]:
-        print(len(c))
-        print(c)
-    print(len(master_clust[-1]))
+
+    # print out the optimal cluster
+
+    return ([[[x for x in cluster] for cluster in clusters] for clusters in master_clust], 
+        [[y for y in cluster] for cluster in master_clust[min_dbi[0]]])
 
 
-    return [[[x for x in cluster] for cluster in clusters] for clusters in master_clust]
+
+
+def rand_index(p, h):
+    """
+    calculates adjusted rand index for two clusterings
+    ARI is between -1 and 1
+    """
+    rand_array = np.zeros((len(p), len(h)), dtype=float)
+    for i, partition in enumerate(p):
+        for j, hierarchical in enumerate(h):
+            rand_array[i][j] = len(set(partition) & set(hierarchical))
+
+    index = 0
+
+    tmp_a = 0
+    tmp_b = 0
+
+    n = sum([sum(subrow) for subrow in rand_array])
+
+    for k in range(len(rand_array)):
+        cols = 0  # column sums
+        for l in range(len(rand_array)):
+            index += choose(rand_array[i][j], 2)
+            cols += rand_array[i][j]
+        tmp_b += choose(sum(rand_array[i]), 2)  #row-wise sums
+        tmp_a += choose(cols, 2)  #column-wise sums
+
+    expected_ind = (tmp_a*tmp_b) / choose(n, 2)
+
+    max_ind = (tmp_a + tmp_b) / 2
+
+    adj_rand_ind = (index - expected_ind) / (max_ind - expected_ind)
+    print('rand')
+    print(adj_rand_ind)
+
+def choose(n, k):
+    """returns binomial coefficient"""
+    return fac(n) // fac(k) //fac(n - k)
+
+
+
+

@@ -7,6 +7,13 @@ aa_mw = {"ALA": 89.094, "ARG": 174.203, 'ASN': 132.119, 'ASP': 133.104, 'CYS': 1
 aa_charge = {"ALA": 0, "ARG": 1, 'ASN': 0, 'ASP': -1, 'CYS': 0, 'GLU': -1, 'GLN': 0, 'GLY': 0, 'HIS':.9, 'ILE': 0, 'LEU': 0, 'LYS': 1, 'MET': -1, 'PHE': 0, 'PRO': 0, 'SER': 0, 'THR': 0, 'TRP': 0, 'TYR': 0, 'VAL': 0}
 
 def location(site):
+    """
+    determines the "location" of a site
+    the location is a point in 3-space corresponding to:
+     total molecular weight
+     total hydropathy index
+     total charge
+    """
     global aa_hydro
     global aa_mw
     global aa_charge
@@ -34,18 +41,60 @@ def compute_similarity(site_a, site_b):
     # Euclidean distance
     return math.sqrt(sum([(x - y)**2 for x, y in zip(site_a, site_b)]))
 
+def avg_to_cent(cluster, centroid):
+    """
+    compute average distance to centroid for given cluster
+    """
+
+    dist = []
+    for site in cluster:
+        dist.append(compute_similarity(location(site), centroid))
+    return np.mean(dist)
+
+
+def dbi(clusters):
+    """
+    compute Davies Bouldin index for a cluster
+    """
+    n = len(clusters)
+    db_index = 0
+    for a in clusters:
+        a_l = kmeans_centroid(a)
+        tmp = []  # store values to calculate min or max
+        for b in clusters:
+            b_l = kmeans_centroid(b)
+            if b != a:
+                numerator = avg_to_cent(a, a_l) + avg_to_cent(b, b_l)
+
+                if b_l != a_l:
+                    denom = compute_similarity(a_l, b_l)
+                else:
+                    return 0
+
+                tmp.append(numerator/denom)
+            if a_l == b_l and a != b:
+                print(a)
+                print(b)
+        db_index += max(tmp)
+    return db_index / n
+
 def kmeans_centroid(data):
-    # convert clusters to tuples
+    """
+    input set of sites, return centroid as tuple
+    """
     tuples = []
     for site in data:
         tuples.append(location(site))
     return tuple(np.mean(tuples, 0))
 
 def kmeans_stop(max_iter, iterations, prev_centroid, centroid):
+    """
+    stop conditions for kmeans algorithm
+    """
     if iterations > max_iter:
         return True
     if prev_centroid == centroid:
-        print("centroids the same")
+        print("centroids the same: " + str(iterations))
         return True
 
 
@@ -81,6 +130,9 @@ def kmeans(sites, k, max_iter):
         for cluster in clusters:
             a = kmeans_centroid(cluster)
             centroids.append(kmeans_centroid(cluster))
+    print(dbi(clusters))
+
+    return clusters
 
 
 
@@ -101,9 +153,9 @@ def cluster_by_partitioning(active_sites):
         for j in range(i+1, len(active_sites)):
             similarity[i][j] = compute_similarity(location(active_sites[i]), location(active_sites[j]))
 
-    kmeans(active_sites, 5, 10)
+    clusters = kmeans(active_sites, 3, 10)
 
-    return []
+    return [[x for x in cluster] for cluster in clusters]
 
 
 def cluster_hierarchically(active_sites):
@@ -114,7 +166,9 @@ def cluster_hierarchically(active_sites):
     Output: a list of clusterings
             (each clustering is a list of lists of Sequence objects)
     """
-    master_clust = []
+
+    dbis = []
+    master_clust = [[] for x in range(len(active_sites))]
     # Fill in your code here!
     clusters = []
     for site in active_sites:
@@ -122,13 +176,20 @@ def cluster_hierarchically(active_sites):
         tmp.add(site)
         clusters.append(tmp)
 
-    master_clust.append(clusters)
+    master_clust[0] = clusters[:] 
+    # this holds the "history" of clusters
+    # first entry is a list of sets each containing one active site
+    # final entry is a list of one set containing all active sites
+    # dbi is used to pick optimal clustering from this master list
+
+
     centroids = []
     for cluster in clusters:
         centroids.append(kmeans_centroid(cluster))
 
-
-    while len(clusters) >= 1:
+    track = 0
+    while len(clusters) >= 2:
+        track += 1
         distance = np.zeros((len(clusters), len(clusters)), dtype=float)
         distance[:] = np.inf
         for i in range(len(clusters) - 1):
@@ -146,6 +207,23 @@ def cluster_hierarchically(active_sites):
         clusters[min_ind[0]] = cluster1
         clusters.remove(cluster2)
 
-        master_clust.append(clusters)
+        if len(clusters) > 1:
+            dbis.append(dbi(clusters))
 
-    return []
+        master_clust[track] = clusters[:]
+
+    min_dbi  = min(enumerate(dbis), key=lambda x: x[1] if x[1] > 0 else float('inf'))
+    print(min_dbi[0])
+    print(len(dbis))
+    print(len(master_clust[min_dbi[0]]))
+    print(master_clust[min_dbi[0]])
+    print(len(master_clust))
+    print(dbis)
+    print('fuck')
+    for c in master_clust[min_dbi[0]]:
+        print(len(c))
+        print(c)
+    print(len(master_clust[-1]))
+
+
+    return [[[x for x in cluster] for cluster in clusters] for clusters in master_clust]
